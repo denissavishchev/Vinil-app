@@ -17,6 +17,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _names = ['WEIGHT', 'DRAG', 'PREROLL'];
+  static const _hints = [
+    'WEIGHT: how heavy the record feels under your finger. Low follows it at once, high is lazy and smooth.',
+    'DRAG: inertia of the platter when it follows the curve. Low reacts at once, high eases in slowly.',
+    'PREROLL: how far behind live the head restarts each loop, so the curve can also speed things up.',
+  ];
 
   @override
   void initState() {
@@ -33,7 +38,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // the app is being left or closed: write the settings now
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) widget.app.saveSettings();
+    if (state != AppLifecycleState.resumed) {
+      widget.app.engine.motorOn = false; // leaving the app: back to stop
+      widget.app.saveSettings();
+    } else {
+      setState(() {}); // the play / stop button shows the stopped state again
+    }
   }
 
   AppController get app => widget.app;
@@ -130,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: VSlider(
                       value: app.sliders[i],
                       defaultValue: AppController.sliderDefaults[i],
+                      hint: _hints[i],
                       onChanged: (v) => app.setSlider(i, v),
                     ),
                   ),

@@ -1,20 +1,93 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'theme.dart';
 
 /// A vertical slider in the plugin's look: rounded frame, track, ball. value is 0..1.
-class VSlider extends StatelessWidget {
+/// While it is touched, [hint] pops up above it.
+class VSlider extends StatefulWidget {
   final double value, defaultValue;
+  final String hint;
   final ValueChanged<double> onChanged;
   const VSlider({
     super.key,
     required this.value,
     required this.defaultValue,
     required this.onChanged,
+    this.hint = '',
   });
 
   static const double pad =
       26.0; // room between the frame and the ball at both ends
+
+  @override
+  State<VSlider> createState() => _VSliderState();
+}
+
+class _VSliderState extends State<VSlider> {
+  OverlayEntry? _entry;
+  Timer? _hideTimer;
+  int _touches = 0;
+
+  void _show() {
+    _hideTimer?.cancel();
+    _touches++;
+    if (_entry != null || widget.hint.isEmpty) return;
+    final box = context.findRenderObject() as RenderBox;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final cx = box.localToGlobal(box.size.center(Offset.zero)).dx;
+    final screen = MediaQuery.sizeOf(context);
+    _entry = OverlayEntry(
+      builder: (_) => Positioned(
+        left: 8,
+        right: 8,
+        bottom: screen.height - top + 6,
+        child: IgnorePointer(
+          child: Align(
+            alignment: Alignment((cx - 8) / (screen.width - 16) * 2 - 1, 0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 210),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: navyHi,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: gold, width: 1.4),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
+                  ),
+                  child: Text(widget.hint, style: mono(10.5, goldHi)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context).insert(_entry!);
+  }
+
+  void _release() {
+    if (--_touches > 0) return;
+    _touches = 0;
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(milliseconds: 700), _hide);
+  }
+
+  void _hide() {
+    _entry?.remove();
+    _entry = null;
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    _hide();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,15 +95,22 @@ class VSlider extends StatelessWidget {
       builder: (context, box) {
         final h = box.maxHeight;
         double at(double dy) =>
-            (1.0 - (dy - pad) / (h - 2 * pad)).clamp(0.0, 1.0);
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (d) => onChanged(at(d.localPosition.dy)),
-          onVerticalDragUpdate: (d) => onChanged(at(d.localPosition.dy)),
-          onDoubleTap: () => onChanged(defaultValue), // back to the default
-          child: CustomPaint(
-            size: Size(box.maxWidth, h),
-            painter: _SliderPainter(value),
+            (1.0 - (dy - VSlider.pad) / (h - 2 * VSlider.pad)).clamp(0.0, 1.0);
+        return Listener(
+          onPointerDown: (_) => _show(),
+          onPointerUp: (_) => _release(),
+          onPointerCancel: (_) => _release(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => widget.onChanged(at(d.localPosition.dy)),
+            onVerticalDragUpdate: (d) =>
+                widget.onChanged(at(d.localPosition.dy)),
+            onDoubleTap: () =>
+                widget.onChanged(widget.defaultValue), // back to the default
+            child: CustomPaint(
+              size: Size(box.maxWidth, h),
+              painter: _SliderPainter(widget.value),
+            ),
           ),
         );
       },

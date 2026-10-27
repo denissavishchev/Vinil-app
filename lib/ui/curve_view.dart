@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -21,25 +20,40 @@ class CurveView extends StatefulWidget {
 
 class _CurveViewState extends State<CurveView> {
   static const double _hit = 24.0;
+  static const double _lineReach =
+      10.0; // a new point needs a touch this close to the curve
   int _drag = -1;
+  bool _created = false; // the point being dragged was added by this touch
   int? _pointer;
   Offset _downAt = Offset.zero;
   Timer? _hold;
   String _readout = '';
 
-  VinilEngine get engine => widget.app.engine;
+  // two fingers: zoom and pan the time axis
+  final Map<int, Offset> _fingers = {};
+  bool _zooming = false, _locked = false;
+  double _zoomDist0 = 1, _zoomSpan0 = 1, _zoomFocus = 0;
+
+  AppController get app => widget.app;
+  VinilEngine get engine => app.engine;
   List<CurvePoint> get pts => engine.curve.pts;
 
   // geometry (mirrors the plugin: the area is the view inset by 6, the speed axis is inset by 10 top and bottom)
   Rect _area(Size s) => (Offset.zero & s).deflate(6);
-  double _xToPix(Size s, double x) => _area(s).left + x * _area(s).width;
+  double _xToPix(Size s, double x) =>
+      _area(s).left + (x - app.viewStart) / app.viewSpan * _area(s).width;
   double _uToPix(Size s, double u) {
     final r = _area(s).deflate(10);
     return r.center.dy - u * r.height * 0.5;
   }
 
-  double _pixToX(Size s, double px) =>
-      ((px - _area(s).left) / _area(s).width).clamp(0.0, 1.0);
+  /// time position (0..1 of the recording) under a pixel; may lie outside the visible part for [clamp] false
+  double _pixToX(Size s, double px, {bool clamp = true}) {
+    final x =
+        app.viewStart + (px - _area(s).left) / _area(s).width * app.viewSpan;
+    return clamp ? x.clamp(0.0, 1.0) : x;
+  }
+
   double _pixToU(Size s, double py) {
     final r = _area(s).deflate(10);
     return ((r.center.dy - py) / (r.height * 0.5)).clamp(-1.0, 1.0);
@@ -59,6 +73,17 @@ class _CurveViewState extends State<CurveView> {
     return best;
   }
 
+  /// is the touch on the curve line, or within [_lineReach] pixels of it?
+  bool _nearCurve(Size s, Offset p) {
+    for (var dx = -_lineReach; dx <= _lineReach; dx += 2) {
+      final x = _pixToX(s, p.dx + dx);
+      final y = _uToPix(s, engine.curveAt(x));
+      if (math.sqrt(dx * dx + (p.dy - y) * (p.dy - y)) <= _lineReach)
+        return true;
+    }
+    return false;
+  }
+
   void _addPoint(Size s, Offset p) {
     final x = _pixToX(s, p.dx), u = _pixToU(s, p.dy);
     var at = pts.indexWhere((q) => q.x > x);
@@ -70,11 +95,51 @@ class _CurveViewState extends State<CurveView> {
     }
     pts.insert(at, CurvePoint(x, u));
     _drag = at;
-    widget.app.curveEdited();
+    _created = true;
+    app.curveEdited();
+  }
+
+  void _beginZoom(Size s) {
+    _hold?.cancel();
+    if (_created && _drag > 0 && _drag < pts.length - 1) {
+      pts.removeAt(
+        _drag,
+      ); // the first finger of the pinch only added a point by accident
+      app.curveEdited();
+    }
+    _drag = -1;
+    _created = false;
+    _pointer = null;
+    _readout = '';
+    final f = _fingers.values.toList();
+    _zoomDist0 = math.max(24.0, (f[0].dx - f[1].dx).abs());
+    _zoomSpan0 = app.viewSpan;
+    _zoomFocus = _pixToX(s, (f[0].dx + f[1].dx) / 2);
+    _zooming = true;
+  }
+
+  void _zoomMove(Size s) {
+    final f = _fingers.values.toList();
+    final dist = math.max(24.0, (f[0].dx - f[1].dx).abs());
+    final span = (_zoomSpan0 * _zoomDist0 / dist).clamp(app.minViewSpan, 1.0);
+    final mid = (f[0].dx + f[1].dx) / 2;
+    // the point of the recording that was between the fingers stays between them
+    final start = _zoomFocus - (mid - _area(s).left) / _area(s).width * span;
+    app.viewSpan = span;
+    app.viewStart = start.clamp(0.0, 1.0 - span);
+    setState(() {});
   }
 
   void _down(Size s, PointerDownEvent e) {
-    if (_pointer != null || !_area(s).contains(e.localPosition)) return;
+    final canZoom = app.hasClip && !app.recording;
+    if (_fingers.length < 2 && _area(s).contains(e.localPosition))
+      _fingers[e.pointer] = e.localPosition;
+    if (canZoom && _fingers.length == 2 && !_zooming) {
+      _beginZoom(s);
+      setState(() {});
+      return;
+    }
+    if (_zooming || _locked || _fingers.length != 1 || _pointer != null) return;
     _pointer = e.pointer;
     _downAt = e.localPosition;
     final idx = _hitPoint(s, e.localPosition);
@@ -86,17 +151,22 @@ class _CurveViewState extends State<CurveView> {
             pts.removeAt(_drag);
             _drag = -1;
             _readout = '';
-            widget.app.curveEdited();
+            app.curveEdited();
           }
         });
       }
-    } else {
+    } else if (_nearCurve(s, e.localPosition)) {
       _addPoint(s, e.localPosition);
     }
     setState(() {});
   }
 
   void _move(Size s, PointerMoveEvent e) {
+    if (_fingers.containsKey(e.pointer)) _fingers[e.pointer] = e.localPosition;
+    if (_zooming) {
+      if (_fingers.length == 2) _zoomMove(s);
+      return;
+    }
     if (e.pointer != _pointer) return;
     if ((e.localPosition - _downAt).distance > 6) _hold?.cancel();
     if (_drag < 0 || _drag >= pts.length) return;
@@ -112,15 +182,24 @@ class _CurveViewState extends State<CurveView> {
     }
     final speed = u * VinilEngine.speedRange;
     _readout =
-        '${(pt.x * widget.app.clipSeconds).toStringAsFixed(2)} s   ${speed >= 0 ? '+' : ''}${speed.toStringAsFixed(2)}x';
-    widget.app.curveEdited();
+        '${(pt.x * app.clipSeconds).toStringAsFixed(2)} s   ${speed >= 0 ? '+' : ''}${speed.toStringAsFixed(2)}x';
+    app.curveEdited();
   }
 
   void _up(PointerEvent e) {
+    _fingers.remove(e.pointer);
+    if (_zooming) {
+      if (_fingers.length < 2) {
+        _zooming = false;
+        _locked = true; // the finger that is left does not edit anything
+      }
+    }
+    if (_fingers.isEmpty) _locked = false;
     if (e.pointer != _pointer) return;
     _hold?.cancel();
     _pointer = null;
     _drag = -1;
+    _created = false;
     _readout = '';
     setState(() {});
   }
@@ -136,6 +215,10 @@ class _CurveViewState extends State<CurveView> {
     return LayoutBuilder(
       builder: (context, box) {
         final size = Size(box.maxWidth, box.maxHeight);
+        final curveLayer = CustomPaint(
+          size: size,
+          painter: _CurveLinePainter(widget.app, _drag),
+        );
         return Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) => _down(size, e),
@@ -152,15 +235,13 @@ class _CurveViewState extends State<CurveView> {
                 ),
               ),
               // the curve fades while the record is being scratched
+              // (the painted child is built once per rebuild, so the per-frame opacity change does not repaint it)
               RepaintBoundary(
                 child: Frames(
                   builder: (_) => AnimatedOpacity(
                     duration: const Duration(milliseconds: 150),
                     opacity: widget.app.engine.scratching ? 0.25 : 1.0,
-                    child: CustomPaint(
-                      size: size,
-                      painter: _CurveLinePainter(widget.app, _drag),
-                    ),
+                    child: curveLayer,
                   ),
                 ),
               ),
@@ -169,7 +250,7 @@ class _CurveViewState extends State<CurveView> {
                   child: Frames(
                     builder: (_) => CustomPaint(
                       size: size,
-                      painter: _PlayheadPainter(widget.app.engine),
+                      painter: _PlayheadPainter(widget.app),
                     ),
                   ),
                 ),
@@ -202,7 +283,8 @@ class _CurvePainter extends CustomPainter {
 
     final area = all.deflate(6);
     final inner = area.deflate(10);
-    double xToPix(double x) => area.left + x * area.width;
+    final v0 = app.viewStart, span = app.viewSpan;
+    double xToPix(double x) => area.left + (x - v0) / span * area.width;
     double uToPix(double u) => inner.center.dy - u * inner.height * 0.5;
     final cy = uToPix(0);
     const range = VinilEngine.speedRange;
@@ -238,37 +320,44 @@ class _CurvePainter extends CustomPainter {
       );
     }
 
-    // ---- time axis in seconds ----
+    // ---- time axis in seconds (of the visible part) ----
     final dur = app.clipSeconds;
-    // labels at least ~36 px apart; the closing label sits at the right edge
-    var step = 1.0;
-    for (final cand in const [1.0, 2.0, 5.0, 10.0]) {
-      step = cand;
-      if (area.width * cand / dur >= 36) break;
+    final shown = dur * span;
+    // labels at least ~36 px apart
+    var step = 10.0;
+    for (final cand in const [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]) {
+      if (area.width * cand / shown >= 36) {
+        step = cand;
+        break;
+      }
     }
-    for (var t = 0.0; t < dur - 0.01; t += step) {
+    final t0 = v0 * dur, t1 = (v0 + span) * dur;
+    final atEnd = v0 + span > 0.999;
+    for (var t = (t0 / step).ceil() * step; t < t1 - 0.001; t += step) {
       final x = xToPix(t / dur);
       canvas.drawLine(
         Offset(x, area.top),
         Offset(x, area.bottom),
         stroke(gold.withValues(alpha: 0.12), 1),
       );
-      if (area.right - x < 40) continue;
+      if (area.right - x < 40 && atEnd) continue;
       drawText(
         canvas,
-        '${t.toInt()}s',
+        step < 1 ? '${t.toStringAsFixed(1)}s' : '${t.round()}s',
         Offset(x + 3, area.bottom - 8),
         mono(9.5, gold.withValues(alpha: 0.65)),
         align: -1,
       );
     }
-    drawText(
-      canvas,
-      '${dur.toStringAsFixed(dur == dur.roundToDouble() ? 0 : 1)}s',
-      Offset(area.right - 3, area.bottom - 8),
-      mono(9.5, gold.withValues(alpha: 0.65)),
-      align: 1,
-    );
+    if (atEnd) {
+      drawText(
+        canvas,
+        '${dur.toStringAsFixed(dur == dur.roundToDouble() ? 0 : 1)}s',
+        Offset(area.right - 3, area.bottom - 8),
+        mono(9.5, gold.withValues(alpha: 0.65)),
+        align: 1,
+      );
+    }
 
     // ---- waveform of the recording ----
     if (app.hasClip || app.recording) {
@@ -286,7 +375,8 @@ class _CurvePainter extends CustomPainter {
             gain *
             app.wave[math.min(
               VinilEngine.waveBins - 1,
-              x * VinilEngine.waveBins ~/ math.max(1, cols),
+              ((v0 + x / math.max(1, cols) * span) * VinilEngine.waveBins)
+                  .toInt(),
             )];
         canvas.drawRect(
           Rect.fromLTWH(
@@ -352,17 +442,17 @@ class _CurveLinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final area = (Offset.zero & size).deflate(6);
     final inner = area.deflate(10);
-    double xToPix(double x) => area.left + x * area.width;
+    final v0 = app.viewStart, span = app.viewSpan;
+    double xToPix(double x) => area.left + (x - v0) / span * area.width;
     double uToPix(double u) => inner.center.dy - u * inner.height * 0.5;
     final cy = uToPix(0);
     canvas.save();
     canvas.clipRect(area);
 
-    final lut = Float32List(512);
-    engine.curve.bake(lut, 512, engine.smooth);
     final path = Path();
     for (var i = 0; i < 512; ++i) {
-      final x = xToPix(i / 511.0), y = uToPix(lut[i]);
+      final ph = v0 + span * i / 511.0;
+      final x = xToPix(ph), y = uToPix(engine.curveAt(ph));
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -370,8 +460,8 @@ class _CurveLinePainter extends CustomPainter {
       }
     }
     final fillP = Path.from(path)
-      ..lineTo(xToPix(1), cy)
-      ..lineTo(xToPix(0), cy)
+      ..lineTo(xToPix(v0 + span), cy)
+      ..lineTo(xToPix(v0), cy)
       ..close();
     canvas.drawPath(fillP, fill(gold.withValues(alpha: 0.18)));
     canvas.drawPath(
@@ -393,8 +483,9 @@ class _CurveLinePainter extends CustomPainter {
 }
 
 class _PlayheadPainter extends CustomPainter {
-  final VinilEngine engine;
-  _PlayheadPainter(this.engine);
+  final AppController app;
+  _PlayheadPainter(this.app);
+  VinilEngine get engine => app.engine;
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => true;
@@ -403,9 +494,11 @@ class _PlayheadPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final area = (Offset.zero & size).deflate(6);
     final inner = area.deflate(10);
-    // the line runs with the curve; only while the record is turned by hand does it follow the record
-    final ph = engine.scratching ? engine.playPhase : engine.cyclePhase;
-    final x = area.left + ph * area.width;
+    // the line runs with the curve; it follows the record while it is turned by hand and stands still when the platter is stopped
+    final ph = engine.scratching || !engine.motorOn
+        ? engine.playPhase
+        : engine.cyclePhase;
+    final x = area.left + (ph - app.viewStart) / app.viewSpan * area.width;
     canvas.save();
     canvas.clipRect(area);
     canvas.drawLine(

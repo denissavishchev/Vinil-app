@@ -18,7 +18,7 @@ It is the phone version of the Devis Laboratory Vinil VST plugin, with the same 
 | Control | What it does |
 |---|---|
 | **REC** | Start / stop recording (max 20 s) |
-| **Curve** | Tap empty space to add a point, drag a point to move it, press and hold a point to delete it |
+| **Curve** | Tap on the curve line (or within about 10 px of it) to add a point, drag a point to move it, press and hold a point to delete it. Spread or pinch two fingers sideways to zoom the time axis (down to 2 s) and drag them to scroll |
 | **Record** | Touch and turn it to scratch |
 | **Play / stop** | Start or stop the platter |
 | **WEIGHT** | How heavy the record feels under your finger (low = follows the finger instantly, high = lazy and smooth) |

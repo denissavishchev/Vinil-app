@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -36,6 +37,14 @@ class AppController extends ChangeNotifier {
   int _recCount = 0;
   int? _carry; // odd byte left over from a stream chunk
   StreamSubscription<Uint8List>? _sub;
+
+  /// the part of the recording the window shows (fractions 0..1): pinch with two fingers to zoom, at least 2 s
+  double viewStart = 0.0, viewSpan = 1.0;
+  double get minViewSpan => math.min(1.0, 2.0 / clipSeconds);
+  void resetView() {
+    viewStart = 0.0;
+    viewSpan = 1.0;
+  }
 
   bool get recording => state == RecState.recording;
   bool get hasClip => engine.hasClip;
@@ -82,6 +91,7 @@ class AppController extends ChangeNotifier {
     _clip = clip;
     engine.setClip(clip);
     _rebuildWave(clip);
+    resetView();
   }
 
   void _rebuildWave(Float32List clip) {
@@ -219,6 +229,7 @@ class AppController extends ChangeNotifier {
       _carry = null;
       recordedSeconds = 0.0;
       wave.fillRange(0, wave.length, 0.0);
+      resetView();
       state = RecState.recording;
       notifyListeners();
 
