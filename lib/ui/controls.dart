@@ -200,10 +200,13 @@ class IconSquareButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: CustomPaint(painter: _IconPainter(play), child: const SizedBox.expand()),
-      );
+    behavior: HitTestBehavior.opaque,
+    onTap: onTap,
+    child: CustomPaint(
+      painter: _IconPainter(play),
+      child: const SizedBox.expand(),
+    ),
+  );
 }
 
 class _IconPainter extends CustomPainter {
@@ -212,21 +215,31 @@ class _IconPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final r = RRect.fromRectAndRadius((Offset.zero & size).deflate(0.7), const Radius.circular(10));
+    final r = RRect.fromRectAndRadius(
+      (Offset.zero & size).deflate(0.7),
+      const Radius.circular(10),
+    );
     canvas.drawRRect(r, fill(gold.withValues(alpha: 0.06)));
     canvas.drawRRect(r, stroke(gold, 1.5));
     final c = size.center(Offset.zero);
     final u = size.shortestSide * 0.17;
     if (play) {
       canvas.drawPath(
-          Path()
-            ..moveTo(c.dx - u * 0.8, c.dy - u * 1.2)
-            ..lineTo(c.dx + u * 1.3, c.dy)
-            ..lineTo(c.dx - u * 0.8, c.dy + u * 1.2)
-            ..close(),
-          fill(goldHi));
+        Path()
+          ..moveTo(c.dx - u * 0.8, c.dy - u * 1.2)
+          ..lineTo(c.dx + u * 1.3, c.dy)
+          ..lineTo(c.dx - u * 0.8, c.dy + u * 1.2)
+          ..close(),
+        fill(goldHi),
+      );
     } else {
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: c, width: u * 2, height: u * 2), const Radius.circular(2)), fill(goldHi));
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: c, width: u * 2, height: u * 2),
+          const Radius.circular(2),
+        ),
+        fill(goldHi),
+      );
     }
   }
 

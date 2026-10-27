@@ -151,6 +151,19 @@ class _CurveViewState extends State<CurveView> {
                   painter: _CurvePainter(widget.app, _drag, _readout),
                 ),
               ),
+              // the curve fades while the record is being scratched
+              RepaintBoundary(
+                child: Frames(
+                  builder: (_) => AnimatedOpacity(
+                    duration: const Duration(milliseconds: 150),
+                    opacity: widget.app.engine.scratching ? 0.25 : 1.0,
+                    child: CustomPaint(
+                      size: size,
+                      painter: _CurveLinePainter(widget.app, _drag),
+                    ),
+                  ),
+                ),
+              ),
               if (widget.app.hasClip && !widget.app.recording)
                 RepaintBoundary(
                   child: Frames(
@@ -270,7 +283,8 @@ class _CurvePainter extends CustomPainter {
       final gain = (0.9 / math.max(peak, 0.15)).clamp(1.0, 6.0);
       for (var x = 0; x < cols; x += 2) {
         final a =
-            gain * app.wave[math.min(
+            gain *
+            app.wave[math.min(
               VinilEngine.waveBins - 1,
               x * VinilEngine.waveBins ~/ math.max(1, cols),
             )];
@@ -286,7 +300,64 @@ class _CurvePainter extends CustomPainter {
       }
     }
 
-    // ---- the curve ----
+    final note =
+        app.message ??
+        (!app.hasClip && !app.recording ? 'PRESS REC  -  MAX 20 s' : null);
+    if (note != null) {
+      drawText(
+        canvas,
+        note,
+        Offset(area.center.dx, area.center.dy - 26),
+        mono(11, goldHi.withValues(alpha: 0.8), bold: true),
+      );
+    }
+    if (app.recording) {
+      drawText(
+        canvas,
+        'REC',
+        Offset(area.right - 8, area.top + 12),
+        mono(10.5, goldHi, bold: true),
+        align: 1,
+      );
+    }
+    canvas.restore();
+
+    if (readout.isNotEmpty) {
+      drawText(
+        canvas,
+        readout,
+        Offset(area.right - 8, area.top + 12),
+        mono(10.5, goldHi),
+        align: 1,
+      );
+    }
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(all.deflate(0.5), const Radius.circular(12)),
+      stroke(gold.withValues(alpha: 0.55), 1.2),
+    );
+  }
+}
+
+class _CurveLinePainter extends CustomPainter {
+  final AppController app;
+  final int dragIndex;
+  _CurveLinePainter(this.app, this.dragIndex);
+
+  VinilEngine get engine => app.engine;
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => true;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final area = (Offset.zero & size).deflate(6);
+    final inner = area.deflate(10);
+    double xToPix(double x) => area.left + x * area.width;
+    double uToPix(double u) => inner.center.dy - u * inner.height * 0.5;
+    final cy = uToPix(0);
+    canvas.save();
+    canvas.clipRect(area);
+
     final lut = Float32List(512);
     engine.curve.bake(lut, 512, engine.smooth);
     final path = Path();
@@ -317,28 +388,7 @@ class _CurvePainter extends CustomPainter {
       canvas.drawCircle(p, 6.5, stroke(goldHi, 1.8));
     }
 
-    final note = app.message ?? (!app.hasClip && !app.recording ? 'PRESS REC  -  MAX 20 s' : null);
-    if (note != null) {
-      drawText(canvas, note, Offset(area.center.dx, area.center.dy - 26), mono(11, goldHi.withValues(alpha: 0.8), bold: true));
-    }
-    if (app.recording) {
-      drawText(canvas, 'REC', Offset(area.right - 8, area.top + 12), mono(10.5, goldHi, bold: true), align: 1);
-    }
     canvas.restore();
-
-    if (readout.isNotEmpty) {
-      drawText(
-        canvas,
-        readout,
-        Offset(area.right - 8, area.top + 12),
-        mono(10.5, goldHi),
-        align: 1,
-      );
-    }
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(all.deflate(0.5), const Radius.circular(12)),
-      stroke(gold.withValues(alpha: 0.55), 1.2),
-    );
   }
 }
 
@@ -353,7 +403,7 @@ class _PlayheadPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final area = (Offset.zero & size).deflate(6);
     final inner = area.deflate(10);
-    final ph = engine.cyclePhase;
+    final ph = engine.playPhase;
     final x = area.left + ph * area.width;
     canvas.save();
     canvas.clipRect(area);
@@ -363,7 +413,19 @@ class _PlayheadPainter extends CustomPainter {
       stroke(goldHi.withValues(alpha: 0.9), 1),
     );
     canvas.drawCircle(
-      Offset(x, inner.center.dy - engine.curveAt(ph) * inner.height * 0.5),
+      Offset(
+        x,
+        inner.center.dy -
+            // on the curve; while the record is scratched it shows the real speed
+            (engine.scratching
+                    ? (engine.speedNow / VinilEngine.speedRange).clamp(
+                        -1.0,
+                        1.0,
+                      )
+                    : engine.curveAt(ph)) *
+                inner.height *
+                0.5,
+      ),
       3.5,
       fill(goldHi),
     );

@@ -42,7 +42,9 @@ class AppController extends ChangeNotifier {
 
   /// length of the clip the curve is laid over
   /// while recording (and with no clip yet) the window shows the full 20 s; afterwards the clip is stretched over it
-  double get clipSeconds => (engine.hasClip && !recording) ? engine.clipSeconds : VinilEngine.maxClipSeconds;
+  double get clipSeconds => (engine.hasClip && !recording)
+      ? engine.clipSeconds
+      : VinilEngine.maxClipSeconds;
 
   Future<void> init() async {
     FlutterPcmSound.setLogLevel(LogLevel.error);
@@ -136,7 +138,8 @@ class AppController extends ChangeNotifier {
     engine.prerollMs = 1000.0 * sliders[2] * sliders[2];
   }
 
-  Future<File> _settingsFile() async => File('${(await getApplicationDocumentsDirectory()).path}/settings.json');
+  Future<File> _settingsFile() async =>
+      File('${(await getApplicationDocumentsDirectory()).path}/settings.json');
 
   Future<void> _loadSettings() async {
     try {
@@ -148,7 +151,10 @@ class AppController extends ChangeNotifier {
           sliders[i] = v[i].toDouble().clamp(0.0, 1.0);
         }
         final curve = m['curve'];
-        if (curve is String) engine.curve.deserialize(curve); // falls back to flat when it is not valid
+        if (curve is String)
+          engine.curve.deserialize(
+            curve,
+          ); // falls back to flat when it is not valid
         engine.curveEdited();
       }
     } catch (e) {
@@ -161,7 +167,10 @@ class AppController extends ChangeNotifier {
   Future<void> saveSettings() async {
     _saveTimer?.cancel();
     try {
-      await (await _settingsFile()).writeAsString(jsonEncode({'sliders': sliders, 'curve': engine.curve.serialize()}), flush: true);
+      await (await _settingsFile()).writeAsString(
+        jsonEncode({'sliders': sliders, 'curve': engine.curve.serialize()}),
+        flush: true,
+      );
     } catch (e) {
       debugPrint('could not save settings: $e');
     }
@@ -260,7 +269,10 @@ class AppController extends ChangeNotifier {
     if (_recCount >= rec.length) return;
     final s = u16 >= 0x8000 ? u16 - 0x10000 : u16;
     final a = s.abs() / 32768.0;
-    final b = _recCount * wave.length ~/ rec.length; // the window is the full 20 s while recording
+    final b =
+        _recCount *
+        wave.length ~/
+        rec.length; // the window is the full 20 s while recording
     if (a > wave[b]) wave[b] = a;
     rec[_recCount++] = s / 32768.0;
   }

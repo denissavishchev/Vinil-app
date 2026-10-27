@@ -40,6 +40,7 @@ class VinilEngine {
 
   // turntable input from the UI
   bool grabbed = false;
+  bool scratching = false; // read by the UI: the record is being turned (or still catching up with the finger)
   double _pendingAngle = 0.0;
 
   // engine state
@@ -51,7 +52,11 @@ class VinilEngine {
   double _lastPhase = 0.0, _platterAng = 0.0;
 
   // read by the UI
-  double cyclePhase = 0.0, speedNow = 1.0, platterAngle = 0.0, lagSeconds = 0.0;
+  double cyclePhase = 0.0,
+      playPhase = 0.0,
+      speedNow = 1.0,
+      platterAngle = 0.0,
+      lagSeconds = 0.0;
 
   VinilEngine({this.sampleRate = 44100}) {
     _ringSize = ((maxClipSeconds + 10.0) * sampleRate).toInt() + 32;
@@ -79,6 +84,7 @@ class VinilEngine {
     _lastPhase = 0.0;
     _pendingAngle = 0.0;
     cyclePhase = 0.0;
+    playPhase = 0.0;
     speedNow = _spd;
     lagSeconds = 0.0;
   }
@@ -148,6 +154,7 @@ class VinilEngine {
     }
 
     var ph = _lastPhase;
+    var following = false;
     for (var i = 0; i < n; ++i) {
       // loop clock: the clip is the loop
       ph = _clipPos / clipLen;
@@ -158,7 +165,7 @@ class VinilEngine {
       if (++_clipPos >= clipLen) _clipPos = 0;
 
       // ---- speed -------------------------------------------------------
-      final following = isGrabbed || _debt.abs() > 1.0;
+      following = isGrabbed || _debt.abs() > 1.0;
       if (following) {
         final step = _debt * kGrab;
         _debt -= step;
@@ -214,6 +221,10 @@ class VinilEngine {
     if (_platterAng < 0.0) _platterAng += _twoPiD;
 
     cyclePhase = ph;
+    // where in the recording the sound comes from: the loop clock minus how far the read head lags behind it
+    playPhase = (ph - _heads[0] / clipLen) % 1.0;
+    if (playPhase < 0.0) playPhase += 1.0;
+    scratching = following;
     speedNow = _spd;
     platterAngle = _platterAng;
     lagSeconds = _heads[0] / fs;

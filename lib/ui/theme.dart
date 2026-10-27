@@ -70,7 +70,8 @@ class PanelPainter extends CustomPainter {
   final bool inner;
   const PanelPainter({this.inner = true});
   @override
-  void paint(Canvas canvas, Size size) => panelOutline(canvas, size, inner: inner);
+  void paint(Canvas canvas, Size size) =>
+      panelOutline(canvas, size, inner: inner);
   @override
   bool shouldRepaint(covariant PanelPainter old) => old.inner != inner;
 }
