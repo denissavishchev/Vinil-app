@@ -36,11 +36,13 @@ class Wav {
     if (bytes.length < 44) return null;
     final b = ByteData.sublistView(bytes);
     if (String.fromCharCodes(bytes.sublist(0, 4)) != 'RIFF' ||
-        String.fromCharCodes(bytes.sublist(36, 40)) != 'data')
+        String.fromCharCodes(bytes.sublist(36, 40)) != 'data') {
       return null;
+    }
     if (b.getUint32(24, Endian.little) != sampleRate ||
-        b.getUint16(22, Endian.little) != 1)
+        b.getUint16(22, Endian.little) != 1) {
       return null;
+    }
     final n = (bytes.length - 44) ~/ 2;
     final out = Float32List(n);
     for (var i = 0; i < n; ++i) {

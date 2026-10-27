@@ -65,8 +65,9 @@ class _CurveViewState extends State<CurveView> {
     _drag = -1;
     if (at <= 0) return;
     if (x - pts[at - 1].x < CurveModel.minGap ||
-        pts[at].x - x < CurveModel.minGap)
+        pts[at].x - x < CurveModel.minGap) {
       return;
+    }
     pts.insert(at, CurvePoint(x, u));
     _drag = at;
     widget.app.curveEdited();
@@ -261,18 +262,24 @@ class _CurvePainter extends CustomPainter {
       final wp = fill(gold.withValues(alpha: 0.3));
       final cols = area.width.toInt();
       final hh = area.height * 0.42;
+      // display only: stretch the drawing so the loudest part reaches ~90% of the height (the audio is not touched)
+      var peak = 0.0;
+      for (final v in app.wave) {
+        if (v > peak) peak = v;
+      }
+      final gain = (0.9 / math.max(peak, 0.15)).clamp(1.0, 6.0);
       for (var x = 0; x < cols; x += 2) {
         final a =
-            app.wave[math.min(
+            gain * app.wave[math.min(
               VinilEngine.waveBins - 1,
               x * VinilEngine.waveBins ~/ math.max(1, cols),
             )];
         canvas.drawRect(
           Rect.fromLTWH(
             area.left + x,
-            cy - a * hh,
+            cy - math.min(a, 1.0) * hh,
             1.6,
-            math.max(1.0, a * hh * 2.0),
+            math.max(1.0, math.min(a, 1.0) * hh * 2.0),
           ),
           wp,
         );

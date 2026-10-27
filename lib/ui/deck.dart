@@ -159,7 +159,7 @@ class _TurntableState extends State<Turntable> {
 
   // the disc is rasterised once and only rotated, so spinning costs almost nothing
   static const Widget _disc = RepaintBoundary(
-    child: CustomPaint(painter: _DiscPainter(), child: SizedBox.expand()),
+    child: CustomPaint(painter: DiscPainter(), child: SizedBox.expand()),
   );
 
   @override
@@ -178,13 +178,19 @@ class _TurntableState extends State<Turntable> {
               RepaintBoundary(
                 child: CustomPaint(
                   size: size,
-                  painter: _RimPainter(_pointer != null),
+                  painter: RimPainter(_pointer != null),
                 ),
               ),
               Frames(
                 builder: (_) => Transform.rotate(
                   angle: widget.engine.platterAngle,
                   child: _disc,
+                ),
+              ),
+              const IgnorePointer(
+                child: CustomPaint(
+                  painter: SpindlePainter(),
+                  child: SizedBox.expand(),
                 ),
               ),
             ],
@@ -195,33 +201,46 @@ class _TurntableState extends State<Turntable> {
   }
 }
 
-class _RimPainter extends CustomPainter {
+class RimPainter extends CustomPainter {
   final bool held;
-  _RimPainter(this.held);
+  final double boost; // > 1 for the app icon: brighter, thicker lines
+  RimPainter(this.held, {this.boost = 1.0});
 
   @override
-  bool shouldRepaint(covariant _RimPainter old) => old.held != held;
+  bool shouldRepaint(covariant RimPainter old) => old.held != held || old.boost != boost;
 
   @override
   void paint(Canvas canvas, Size size) {
     final b = (Offset.zero & size).deflate(3);
     final c = b.center;
     final r = math.min(b.width, b.height) * 0.5;
-    if (held) canvas.drawCircle(c, r, fill(gold.withValues(alpha: 0.14)));
-    canvas.drawCircle(c, r, stroke(gold, 2.4));
-    canvas.drawCircle(c, r - 7, stroke(gold.withValues(alpha: 0.45), 1));
-    canvas.drawCircle(c, 3.5, fill(goldHi)); // spindle
+    if (held) canvas.drawCircle(c, r, fill((boost > 1 ? goldHi : gold).withValues(alpha: math.min(1.0, 0.14 * boost))));
+    canvas.drawCircle(c, r, stroke(boost > 1 ? goldHi : gold, 2.4 * boost));
+    canvas.drawCircle(c, r - 7, stroke((boost > 1 ? goldHi : gold).withValues(alpha: math.min(1.0, 0.45 * boost)), 1));
   }
 }
 
-class _DiscPainter extends CustomPainter {
-  const _DiscPainter();
+class SpindlePainter extends CustomPainter {
+  const SpindlePainter();
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
+
+  @override
+  void paint(Canvas canvas, Size size) => canvas.drawCircle(size.center(Offset.zero), 3.5, fill(goldHi));
+}
+
+class DiscPainter extends CustomPainter {
+  final bool showText; // off for the app icon
+  final double boost; // > 1 for the app icon: brighter, thicker lines
+  const DiscPainter({this.showText = true, this.boost = 1.0});
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final tone = boost > 1 ? goldHi : gold;
     final b = (Offset.zero & size).deflate(3);
     final c = b.center;
     final r = math.min(b.width, b.height) * 0.5;
@@ -232,11 +251,11 @@ class _DiscPainter extends CustomPainter {
       canvas.drawCircle(
         c,
         rr,
-        stroke(gold.withValues(alpha: k % 4 == 0 ? 0.26 : 0.12), 0.9),
+        stroke(tone.withValues(alpha: math.min(1.0, (k % 4 == 0 ? 0.26 : 0.12) * boost)), 0.9),
       );
     }
     for (final rr in [r * 0.60, r * 0.77]) {
-      canvas.drawCircle(c, rr, stroke(gold.withValues(alpha: 0.55), 1.6));
+      canvas.drawCircle(c, rr, stroke(tone.withValues(alpha: math.min(1.0, (0.55) * boost)), 1.6));
     }
 
     // strobe ticks along the rim
@@ -247,7 +266,7 @@ class _DiscPainter extends CustomPainter {
       canvas.drawLine(
         Offset(c.dx + math.sin(a) * r0, c.dy - math.cos(a) * r0),
         Offset(c.dx + math.sin(a) * r1, c.dy - math.cos(a) * r1),
-        stroke(gold.withValues(alpha: major ? 0.9 : 0.5), major ? 1.8 : 1.0),
+        stroke(tone.withValues(alpha: math.min(1.0, (major ? 0.9 : 0.5) * boost)), major ? 1.8 : 1.0),
       );
     }
 
@@ -258,32 +277,21 @@ class _DiscPainter extends CustomPainter {
         ..addArc(Rect.fromCircle(center: c, radius: rr), a0, 0.56);
       canvas.drawPath(
         wedge,
-        stroke(gold.withValues(alpha: 0.3), 5)..strokeCap = StrokeCap.round,
+        stroke(tone.withValues(alpha: math.min(1.0, (0.3) * boost)), 5)..strokeCap = StrokeCap.round,
       );
     }
 
-    // label
+    // label: VINIL above the spindle, the notch below it, both on the centre line
     final rl = r * 0.30;
     canvas.drawCircle(c, rl, fill(navyHi));
-    canvas.drawCircle(c, rl, stroke(gold, 2));
-    canvas.drawCircle(c, rl * 0.82, stroke(gold, 0.8));
-    drawText(
-      canvas,
-      'VINIL',
-      Offset(c.dx, c.dy - rl * 0.37),
-      sans(r * 0.105, gold),
-    );
-    drawText(
-      canvas,
-      '33 1/3 RPM',
-      Offset(c.dx, c.dy + rl * 0.46),
-      mono(r * 0.062, gold),
-    );
+    canvas.drawCircle(c, rl, stroke(tone, 2 * boost));
+    canvas.drawCircle(c, rl * 0.82, stroke(tone, 0.8 * boost));
+    if (showText) drawText(canvas, 'VINIL', Offset(c.dx, c.dy - rl * 0.36), sans(r * 0.105, gold));
     final notch = Path()
-      ..moveTo(c.dx, c.dy - rl + 2)
-      ..lineTo(c.dx - 5, c.dy - rl + 12)
-      ..lineTo(c.dx + 5, c.dy - rl + 12)
+      ..moveTo(c.dx, c.dy + rl * 0.2)
+      ..lineTo(c.dx - 5, c.dy + rl * 0.2 + 10)
+      ..lineTo(c.dx + 5, c.dy + rl * 0.2 + 10)
       ..close();
-    canvas.drawPath(notch, fill(gold));
+    if (showText) canvas.drawPath(notch, fill(tone)); // the app icon has neither the text nor the notch
   }
 }

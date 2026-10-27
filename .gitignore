@@ -1,0 +1,33 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+.idea/
+.vscode/
+.DS_Store
+
+# Generated
+**/doc/api/
+coverage/
+*.log
+pubspec_overrides.yaml
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+**/xcuserdata/
+DerivedData/
+
+# Android
+android/.gradle/
+android/local.properties
+android/captures/
+android/key.properties
+*.jks
+*.keystore

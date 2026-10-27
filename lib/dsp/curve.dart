@@ -89,8 +89,9 @@ class CurveModel {
       final xy = tok.split(',');
       if (xy.length == 2) {
         final x = double.tryParse(xy[0]), y = double.tryParse(xy[1]);
-        if (x != null && y != null)
+        if (x != null && y != null) {
           v.add(CurvePoint(_clamp(x, 0, 1), _clamp(y, -1, 1)));
+        }
       }
     }
     if (v.length < 2 || v.first.x > 0.0001 || v.last.x < 0.9999) {
