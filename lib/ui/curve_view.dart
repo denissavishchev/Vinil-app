@@ -403,7 +403,8 @@ class _PlayheadPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final area = (Offset.zero & size).deflate(6);
     final inner = area.deflate(10);
-    final ph = engine.playPhase;
+    // the line runs with the curve; only while the record is turned by hand does it follow the record
+    final ph = engine.scratching ? engine.playPhase : engine.cyclePhase;
     final x = area.left + ph * area.width;
     canvas.save();
     canvas.clipRect(area);
